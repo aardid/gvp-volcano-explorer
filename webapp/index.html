@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GVP Volcano Explorer — terminology, exposure &amp; time</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  :root{
+    --bg:#11151c; --panel:#1b2230; --panel2:#232c3d; --ink:#e7ecf3;
+    --muted:#9aa6b8; --line:#33405a; --accent:#5aa9ff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font:13px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+  header{display:flex;align-items:center;gap:14px;padding:8px 14px;background:#0c0f15;border-bottom:1px solid var(--line)}
+  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:11.5px}
+  .tabs{display:flex;gap:4px;margin-left:auto}
+  .tabs button{background:var(--panel);color:var(--muted);border:1px solid var(--line);
+    padding:6px 13px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:600}
+  .tabs button.active{background:var(--accent);color:#06121f;border-color:var(--accent)}
+  main{display:flex;height:calc(100vh - 49px)}
+  #side{width:330px;flex:0 0 330px;background:var(--panel);border-right:1px solid var(--line);
+    overflow-y:auto;padding:14px}
+  #side h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);
+    margin:18px 0 8px;font-weight:700}
+  #side h2:first-child{margin-top:0}
+  .ctl{margin-bottom:12px}
+  .ctl label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
+  .ctl label b{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  input[type=text]{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:6px;padding:6px 8px;font-size:12px}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{padding:4px 9px;border-radius:20px;border:1px solid var(--line);background:var(--panel2);
+    color:var(--muted);cursor:pointer;font-size:11.5px;user-select:none}
+  .chip.on{color:#06121f;font-weight:600}
+  .seg{display:flex;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .seg button{flex:1;background:var(--panel2);color:var(--muted);border:0;padding:7px 0;cursor:pointer;font-size:12px}
+  .seg button.on{background:var(--accent);color:#06121f;font-weight:600}
+  .row{display:flex;gap:8px;align-items:center}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:6px;
+    padding:6px 10px;cursor:pointer;font-size:12px}
+  .btn:hover{border-color:var(--accent)}
+  .stat{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed var(--line);font-size:12px}
+  .stat span:first-child{display:flex;align-items:center;gap:7px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}
+  .note{color:var(--muted);font-size:11px;line-height:1.5}
+  #mapwrap{position:relative;flex:1}
+  #map{position:absolute;inset:0;background:#0c0f15}
+  .card{position:absolute;z-index:500;background:rgba(20,26,37,.94);border:1px solid var(--line);
+    border-radius:9px;padding:10px 12px;backdrop-filter:blur(3px)}
+  #chartCard{left:12px;bottom:12px;width:430px}
+  #chartCard h3{margin:0 0 6px;font-size:12px;font-weight:600}
+  #chartCard h3 small{color:var(--muted);font-weight:400}
+  #legend{right:12px;top:12px;font-size:11.5px}
+  #legend .stat{border:0;padding:2px 0}
+  canvas{display:block;width:100%}
+  .pop b{font-size:13px}
+  .pop .meta{color:#555;font-size:11px;margin:2px 0 6px}
+  .pop img{width:100%;border-radius:5px;margin:4px 0}
+  .pop .tierbadge{display:inline-block;padding:1px 7px;border-radius:10px;color:#fff;font-size:11px;font-weight:600}
+  .leaflet-popup-content{margin:10px 12px;width:260px !important}
+  .hidden{display:none !important}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>GVP Volcano Explorer</h1>
+  <span class="sub" id="hsub"></span>
+  <nav class="tabs">
+    <button data-tab="explore" class="active">Terminology &amp; tiers</button>
+    <button data-tab="exposure">Population exposure</button>
+    <button data-tab="timeline">Eruption timeline</button>
+    <button data-tab="about">About</button>
+  </nav>
+</header>
+<main>
+  <aside id="side"></aside>
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div class="card" id="legend"></div>
+    <div class="card" id="chartCard">
+      <h3 id="chartTitle"></h3>
+      <canvas id="chart" height="150"></canvas>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="data/data_core.js"></script>
+<script src="data/data_details.js"></script>
+<script>
+"use strict";
+const CORE = window.GVP_CORE, DET = window.GVP_DETAILS, META = CORE.meta;
+const V = CORE.volcanoes, HIST = CORE.eruptions;
+const REF = META.ref_year;
+
+// ---- tiers (colours match the paper figures) -------------------------
+const TIERS = [
+  {key:"erupting", label:"Erupting",  color:"#67000d"},
+  {key:"high",     label:"High",      color:"#ef3b2c"},
+  {key:"moderate", label:"Moderate",  color:"#fdae61"},
+  {key:"dormant",  label:"Dormant",   color:"#4575b4"},
+  {key:"extinct",  label:"Extinct",   color:"#969696"},
+];
+const UNDATED = {label:"Undated (active, untimed)", color:"#c9d2e0"};
+const TYPE_COLORS = {
+  "Caldera":"#b2182b","Stratovolcano / complex":"#ef8a62","Shield":"#f1b25a",
+  "Monogenetic / field":"#67a9cf","Other":"#9aa6b8"};
+
+// ---- shared state ----------------------------------------------------
+const S = {
+  tab:"explore",
+  year: REF,                       // reference / timeline year
+  th:{...META.thresholds},         // adjustable tier thresholds (yr)
+  types:new Set(Object.keys(TYPE_COLORS)),
+  tecs:new Set(["Subduction zone","Rift zone","Intraplate","Other"]),
+  showUndated:true,
+  search:"",
+  radius:"p30",                    // exposure radius key
+  window:100,                      // timeline window (yr)
+  playing:false,
+};
+
+// ---- helpers ---------------------------------------------------------
+// last eruption year effective AT year T (uses confirmed history when present)
+function effLey(v, T){
+  let best = null;
+  if(v.ley!=null && v.ley<=T) best = v.ley;
+  const h = HIST[v.n];
+  if(h){ for(let i=h.length-1;i>=0;i--){ if(h[i][0]<=T){ if(best==null||h[i][0]>best) best=h[i][0]; break; } } }
+  return best;
+}
+function yearsSince(v, T){ const l=effLey(v,T); return l==null?null:Math.max(T-l, 0); }
+function tierOf(ys){
+  if(ys==null) return null;            // undated / not-yet-active
+  const t=S.th;
+  if(ys<=t.erupting) return 0;
+  if(ys<=t.high)     return 1;
+  if(ys<=t.moderate) return 2;
+  if(ys<=t.dormant)  return 3;
+  return 4;
+}
+function passFilter(v){
+  if(!S.types.has(v.tg)) return false;
+  if(!S.tecs.has(v.teg)) return false;
+  if(S.search){
+    const q=S.search.toLowerCase();
+    if(!((v.name||"").toLowerCase().includes(q) || (v.cty||"").toLowerCase().includes(q))) return false;
+  }
+  return true;
+}
+const fmt = n => n==null ? "—" : n.toLocaleString("en-US");
+const fmtYr = y => y==null ? "—" : (y<0 ? Math.abs(y)+" BCE" : y+" CE");
+function reposeText(ys){
+  if(ys==null) return "undated";
+  if(ys<1) return "< 1 yr";
+  if(ys<1000) return Math.round(ys)+" yr";
+  return (ys/1000).toFixed(ys<10000?1:0)+" kyr";
+}
+
+// ---- map -------------------------------------------------------------
+const map = L.map("map",{worldCopyJump:true,minZoom:2,maxZoom:11}).setView([12,5],2.3);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  {attribution:"&copy; OpenStreetMap &copy; CARTO",subdomains:"abcd",maxZoom:19}).addTo(map);
+
+const markers = V.map(v=>{
+  const m = L.circleMarker([v.lat,v.lon],{radius:4,weight:.6,color:"#000",fillOpacity:.85});
+  m._v = v;
+  m.on("click",()=>openPopup(m));
+  m.addTo(map);
+  return m;
+});
+
+function openPopup(m){
+  const v=m._v, d=DET[v.n]||{}, ys=yearsSince(v,S.year), ti=tierOf(ys);
+  const tcol = ti==null?UNDATED.color:TIERS[ti].color;
+  const tlab = ti==null?"Undated":TIERS[ti].label;
+  const h=HIST[v.n];
+  let html=`<div class="pop"><b>${v.name}</b>`+
+    `<span class="tierbadge" style="background:${tcol};margin-left:6px">${tlab}</span>`+
+    `<div class="meta">${v.type} · ${v.cty} · ${v.elev!=null?v.elev+" m":""}</div>`;
+  if(d.photo) html+=`<img src="${d.photo}" loading="lazy" alt="">`;
+  html+=`<div>Last eruption (as of ${S.year}): <b>${fmtYr(effLey(v,S.year))}</b> `+
+        `(${reposeText(ys)})</div>`;
+  html+=`<div>Pop. within 30 km: <b>${fmt(v.p30)}</b> · within 100 km: <b>${fmt(v.p100)}</b></div>`;
+  html+=`<div>Confirmed eruptions on record: <b>${v.ne}</b></div>`;
+  if(h&&h.length>1) html+=`<canvas class="spark" width="260" height="38" style="margin-top:6px"></canvas>`;
+  if(d.sum) html+=`<details style="margin-top:6px"><summary style="cursor:pointer;color:#888">Geological summary</summary>`+
+    `<div style="max-height:150px;overflow:auto;font-size:11.5px;color:#444;margin-top:4px">${d.sum}</div></details>`;
+  html+=`<div style="margin-top:6px"><a href="https://volcano.si.edu/volcano.cfm?vn=${v.n}" target="_blank">GVP profile #${v.n} ↗</a></div></div>`;
+  m.bindPopup(html,{maxWidth:300}).openPopup();
+  setTimeout(()=>{const c=document.querySelector(".leaflet-popup .spark"); if(c) drawSpark(c,h);},30);
+}
+function drawSpark(c,h){
+  const x=c.getContext("2d"),W=c.width,H=c.height;
+  const ys=h.map(e=>e[0]), y0=Math.min(...ys), y1=Math.max(...ys,REF);
+  x.clearRect(0,0,W,H); x.strokeStyle="#bbb"; x.fillStyle="#67000d";
+  h.forEach(e=>{ const px=(e[0]-y0)/(y1-y0||1)*(W-4)+2, v=(e[1]==null?1:e[1]);
+    const hh=4+v/8*(H-8); x.fillRect(px,H-hh,1.6,hh); });
+  x.fillStyle="#888";x.font="9px sans-serif";x.fillText(fmtYr(y0),2,10);
+  x.textAlign="right";x.fillText("now",W-2,10);x.textAlign="left";
+}
+
+// ---- marker restyle (the core render) --------------------------------
+function radiusFor(v){
+  if(S.tab==="exposure"){
+    const p=v[S.radius]; if(!p) return 2.5;
+    return 3+Math.sqrt(p)/30;            // area ∝ population
+  }
+  if(S.tab==="timeline"){
+    const h=HIST[v.n]; if(!h) return 0;
+    let maxv=-1,hit=false;
+    for(const e of h){ if(e[0]>S.year-S.window && e[0]<=S.year){hit=true; maxv=Math.max(maxv,e[1]==null?1:e[1]);} }
+    return hit ? 3+Math.max(maxv,0)*1.6 : 0;
+  }
+  return 4.5;
+}
+function update(){
+  for(const m of markers){
+    const v=m._v;
+    let show = passFilter(v);
+    const ys = yearsSince(v,S.year), ti=tierOf(ys);
+    if(ti==null && !S.showUndated && S.tab!=="exposure") show=false;
+    const r = show?radiusFor(v):0;
+    if(r<=0){ m.setStyle({opacity:0,fillOpacity:0}); m.setRadius(0); continue; }
+    let col = ti==null?UNDATED.color:TIERS[ti].color;
+    if(S.tab==="exposure" && ti==null) col=UNDATED.color;
+    const hollow = ti==null;
+    m.setRadius(r);
+    m.setStyle({opacity:.9,fillOpacity:hollow?0:(S.tab==="exposure"?.6:.85),
+      color:hollow?"#c9d2e0":"#000", weight:hollow?1.1:.5, fillColor:col});
+  }
+  drawChart(); drawLegend(); buildSidebar();   // sidebar shows live counts
+}
+
+// ---- charts ----------------------------------------------------------
+function dpiCanvas(c,h){
+  const w=c.clientWidth||c.parentElement.clientWidth-24; const r=devicePixelRatio||1;
+  c.width=w*r; c.height=h*r; const x=c.getContext("2d"); x.scale(r,r);
+  c.style.height=h+"px"; return {x,w,h};
+}
+const filtered = ()=>V.filter(passFilter);
+
+function drawChart(){
+  const c=document.getElementById("chart");
+  if(S.tab==="explore") return histChart(c);
+  if(S.tab==="exposure") return exposureChart(c);
+  if(S.tab==="timeline") return timelineChart(c);
+}
+function histChart(c){
+  document.getElementById("chartTitle").innerHTML=
+    `Time since last eruption <small>— ${filtered().length} volcanoes, log scale</small>`;
+  const {x,w,h}=dpiCanvas(c,150);
+  const data=filtered().map(v=>yearsSince(v,S.year)).filter(y=>y!=null).map(y=>Math.max(y,.04));
+  const lo=Math.log10(.04), hi=Math.log10(20000), nb=34;
+  const bins=new Array(nb).fill(0);
+  data.forEach(y=>{ let b=Math.floor((Math.log10(y)-lo)/(hi-lo)*nb); b=Math.max(0,Math.min(nb-1,b)); bins[b]++; });
+  const mx=Math.max(...bins,1), padB=18, padL=4;
+  const bw=(w-padL)/nb;
+  for(let i=0;i<nb;i++){
+    const c0=lo+(i+.5)/nb*(hi-lo), ys=Math.pow(10,c0), ti=tierOf(ys);
+    x.fillStyle= ti==null?"#888":TIERS[ti].color;
+    const bh=(bins[i]/mx)*(h-padB-6);
+    x.fillRect(padL+i*bw, h-padB-bh, bw-1, bh);
+  }
+  // threshold lines
+  x.strokeStyle="#5aa9ff"; x.fillStyle="#9aa6b8"; x.font="9px sans-serif"; x.textAlign="center";
+  [["erupting","92 d"],["high","500 yr"],["moderate","12 kyr"]].forEach(([k,lab])=>{
+    const px=padL+(Math.log10(S.th[k])-lo)/(hi-lo)*(w-padL);
+    if(px>0&&px<w){ x.setLineDash([3,3]); x.beginPath();x.moveTo(px,2);x.lineTo(px,h-padB);x.stroke();x.setLineDash([]);
+      x.fillText(lab,px,h-6); }
+  });
+}
+function exposureChart(c){
+  const rl={p5:"5 km",p10:"10 km",p30:"30 km",p100:"100 km"}[S.radius];
+  document.getElementById("chartTitle").innerHTML=
+    `Population within ${rl} by tier <small>— LandScan</small>`;
+  const {x,w,h}=dpiCanvas(c,150);
+  const sums=new Array(5).fill(0); let und=0;
+  filtered().forEach(v=>{ const p=v[S.radius]||0; const ti=tierOf(yearsSince(v,S.year));
+    if(ti==null) und+=p; else sums[ti]+=p; });
+  const labels=[...TIERS.map(t=>t.label),"Undated"], vals=[...sums,und],
+        cols=[...TIERS.map(t=>t.color),UNDATED.color];
+  const mx=Math.max(...vals,1), padL=4, padB=30, bw=(w-padL)/vals.length;
+  x.font="9px sans-serif"; x.textAlign="center";
+  vals.forEach((val,i)=>{
+    const bh=(val/mx)*(h-padB-8); x.fillStyle=cols[i];
+    x.fillRect(padL+i*bw+4,h-padB-bh,bw-9,bh);
+    x.fillStyle="#9aa6b8"; x.fillText(labels[i],padL+i*bw+bw/2,h-padB+11);
+    x.fillStyle="#e7ecf3"; x.fillText(val>1e6?(val/1e6).toFixed(0)+"M":(val/1e3).toFixed(0)+"k",
+      padL+i*bw+bw/2,h-padB-bh-3);
+  });
+  const tot=vals.reduce((a,b)=>a+b,0);
+  x.fillStyle="#9aa6b8";x.textAlign="left";x.fillText("Total: "+(tot/1e6).toFixed(0)+"M people",padL,11);
+}
+let TLBINS=null;
+function timelineBins(){
+  if(TLBINS) return TLBINS;
+  const lo=-2000,hi=REF,step=50,n=Math.ceil((hi-lo)/step);
+  const b=new Array(n).fill(0);
+  for(const k in HIST) for(const e of HIST[k]){ if(e[0]>=lo){ const i=Math.min(n-1,Math.floor((e[0]-lo)/step)); b[i]++; } }
+  return TLBINS={lo,hi,step,b,mx:Math.max(...b,1)};
+}
+function timelineChart(c){
+  const n=filtered().filter(v=>{const h=HIST[v.n];return h&&h.some(e=>e[0]>S.year-S.window&&e[0]<=S.year);}).length;
+  document.getElementById("chartTitle").innerHTML=
+    `Confirmed eruptions per 50 yr <small>— ${n} volcanoes active in window</small>`;
+  const {x,w,h}=dpiCanvas(c,150);
+  const tb=timelineBins(), padB=16, bw=w/tb.b.length;
+  for(let i=0;i<tb.b.length;i++){ const yr=tb.lo+(i+.5)*tb.step;
+    x.fillStyle = (yr>S.year-S.window&&yr<=S.year)?"#5aa9ff":"#3a4a66";
+    const bh=Math.sqrt(tb.b[i]/tb.mx)*(h-padB-4);
+    x.fillRect(i*bw,h-padB-bh,bw-.5,bh);
+  }
+  // year cursor
+  const cx=(S.year-tb.lo)/(tb.hi-tb.lo)*w;
+  x.strokeStyle="#ffce54";x.beginPath();x.moveTo(cx,0);x.lineTo(cx,h-padB);x.stroke();
+  x.fillStyle="#9aa6b8";x.font="9px sans-serif";x.textAlign="left";
+  x.fillText("2000 BCE",1,h-4); x.textAlign="right"; x.fillText(REF+" CE",w-1,h-4);
+  c.onclick=ev=>{ const rx=ev.offsetX/c.clientWidth; S.year=Math.round(tb.lo+rx*(tb.hi-tb.lo)); update(); };
+}
+
+// ---- legend ----------------------------------------------------------
+function drawLegend(){
+  const el=document.getElementById("legend");
+  const counts=new Array(5).fill(0); let und=0,shown=0;
+  filtered().forEach(v=>{ const ti=tierOf(yearsSince(v,S.year));
+    if(ti==null){ if(S.showUndated||S.tab==="exposure"){und++;shown++;} } else {counts[ti]++;shown++;} });
+  let html=`<div style="font-weight:600;margin-bottom:5px">Active-tier counts <span style="color:#9aa6b8;font-weight:400">(as of ${S.year})</span></div>`;
+  TIERS.forEach((t,i)=>{ html+=`<div class="stat"><span><i class="sw" style="background:${t.color}"></i>${t.label}</span><b>${counts[i]}</b></div>`; });
+  html+=`<div class="stat"><span><i class="sw" style="background:${UNDATED.color}"></i>Undated</span><b>${und}</b></div>`;
+  html+=`<div class="stat" style="border:0;margin-top:3px"><span>Shown</span><b>${shown}</b></div>`;
+  el.innerHTML=html;
+}
+
+// ---- sidebar (per-tab controls) --------------------------------------
+function slider(id,label,val,min,max,step,fmtv){
+  return `<div class="ctl"><label>${label}<b id="${id}v">${fmtv(val)}</b></label>
+    <input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
+}
+function typeChips(){
+  let h=`<div class="chips">`;
+  for(const t in TYPE_COLORS){ const on=S.types.has(t);
+    h+=`<span class="chip ${on?"on":""}" data-type="${t}" style="${on?`background:${TYPE_COLORS[t]};border-color:${TYPE_COLORS[t]}`:""}">${t.split(" ")[0]}</span>`; }
+  return h+`</div>`;
+}
+function tecChips(){
+  let h=`<div class="chips">`;
+  ["Subduction zone","Rift zone","Intraplate","Other"].forEach(t=>{ const on=S.tecs.has(t);
+    h+=`<span class="chip ${on?"on":""}" data-tec="${t}" style="${on?"background:#3a4a66;border-color:#5aa9ff;color:#e7ecf3":""}">${t.replace(" zone","")}</span>`; });
+  return h+`</div>`;
+}
+const log10=Math.log10, p10=x=>Math.pow(10,x);
+function buildSidebar(){
+  const s=document.getElementById("side"); const T=S.tab;
+  let h="";
+  if(T==="about"){ s.innerHTML=aboutHTML(); return; }
+
+  // year slider shared by all map tabs
+  h+=`<h2>Reference year</h2>`;
+  h+=`<div class="ctl"><label>“Years since” measured as of<b id="yrv">${S.year} CE</b></label>
+      <input type="range" id="yr" min="-2000" max="${REF}" step="1" value="${S.year}"></div>
+      <div class="row"><button class="btn" id="play">${S.playing?"⏸ pause":"▶ play history"}</button>
+      <button class="btn" id="yrnow">reset → ${REF}</button></div>
+      <div class="note">Last-eruption recomputed from each volcano’s confirmed eruption history up to this year.</div>`;
+
+  if(T==="explore"){
+    h+=`<h2>Tier thresholds <span style="color:#9aa6b8;font-weight:400;text-transform:none">(draft Table 2)</span></h2>`;
+    h+=slider("th0","Erupting ≤",log10(S.th.erupting),log10(.02),log10(50),.01,v=>{const y=p10(v);return y<1?Math.round(y*365)+" d":y.toFixed(1)+" yr";});
+    h+=slider("th1","High ≤",log10(S.th.high),0,4,.02,v=>Math.round(p10(v))+" yr");
+    h+=slider("th2","Moderate ≤",log10(S.th.moderate),2,5,.02,v=>{const y=p10(v);return (y/1000).toFixed(1)+" kyr";});
+    h+=`<div class="row"><button class="btn" id="thReset">reset thresholds</button></div>
+        <div class="note">Drag to watch how many volcanoes flip between “active”, “dormant” and “extinct” — the paper’s core point.</div>`;
+    h+=`<h2>Filters</h2><div class="ctl"><input type="text" id="search" placeholder="search name or country…" value="${S.search}"></div>`;
+    h+=`<div class="ctl">${typeChips()}</div><div class="ctl">${tecChips()}</div>`;
+    h+=`<div class="ctl"><label style="cursor:pointer"><input type="checkbox" id="undat" ${S.showUndated?"checked":""}> show 366 undated (active but untimed)</label></div>`;
+  }
+  if(T==="exposure"){
+    h+=`<h2>Exposure radius</h2><div class="seg" id="radseg">`+
+       ["p5","p10","p30","p100"].map(k=>`<button data-r="${k}" class="${S.radius===k?"on":""}">${({p5:"5",p10:"10",p30:"30",p100:"100"})[k]} km</button>`).join("")+`</div>
+       <div class="note">Marker area ∝ people living within the radius (LandScan). Colour = active tier as of the reference year.</div>`;
+    h+=`<h2>Filters</h2><div class="ctl"><input type="text" id="search" placeholder="search name or country…" value="${S.search}"></div>`;
+    h+=`<div class="ctl">${typeChips()}</div>`;
+    h+=`<h2>Highest exposure × longest repose</h2><div id="outliers" class="note"></div>`;
+  }
+  if(T==="timeline"){
+    h+=`<h2>Activity window</h2>`+
+       `<div class="ctl"><label>Show volcanoes active within<b id="winv">${S.window} yr</b></label>
+        <input type="range" id="win" min="10" max="500" step="10" value="${S.window}"></div>
+        <div class="note">Markers = volcanoes with a confirmed eruption in [year−window, year]; size ∝ max VEI. Click the chart to jump in time.</div>`;
+    h+=`<h2>Filters</h2><div class="ctl">${typeChips()}</div>`;
+  }
+  s.innerHTML=h;
+  wire();
+  if(T==="exposure") fillOutliers();
+}
+function fillOutliers(){
+  const el=document.getElementById("outliers"); if(!el) return;
+  const list=filtered().map(v=>({v,ys:yearsSince(v,S.year),p:v[S.radius]||0}))
+    .filter(o=>o.ys!=null && o.ys>500 && o.p>50000)
+    .sort((a,b)=>b.p-a.p).slice(0,8);
+  el.innerHTML = list.map(o=>`<div class="stat" style="cursor:pointer" data-vn="${o.v.n}">
+    <span>${o.v.name}</span><b>${fmt(o.p)} · ${reposeText(o.ys)}</b></div>`).join("") ||
+    "No long-repose high-exposure volcanoes in current filter.";
+  el.querySelectorAll("[data-vn]").forEach(r=>r.onclick=()=>{
+    const m=markers.find(m=>m._v.n==+r.dataset.vn); if(m){map.setView(m.getLatLng(),6);openPopup(m);} });
+}
+
+// ---- wiring ----------------------------------------------------------
+let playTimer=null;
+function wire(){
+  const $=id=>document.getElementById(id);
+  const yr=$("yr"); if(yr) yr.oninput=e=>{S.year=+e.target.value; $("yrv").textContent=S.year+" CE"; update();};
+  if($("yrnow")) $("yrnow").onclick=()=>{S.year=REF;update();};
+  if($("play")) $("play").onclick=togglePlay;
+  if($("search")) $("search").oninput=e=>{S.search=e.target.value; update();};
+  if($("undat")) $("undat").onchange=e=>{S.showUndated=e.target.checked; update();};
+  // threshold sliders (log scale)
+  const ths=[["th0","erupting"],["th1","high"],["th2","moderate"]];
+  ths.forEach(([id,key])=>{ const el=$(id); if(el) el.oninput=e=>{S.th[key]=p10(+e.target.value); update();}; });
+  if($("thReset")) $("thReset").onclick=()=>{S.th={...META.thresholds}; update();};
+  if($("win")) $("win").oninput=e=>{S.window=+e.target.value; $("winv").textContent=S.window+" yr"; update();};
+  // chips
+  document.querySelectorAll("[data-type]").forEach(c=>c.onclick=()=>{
+    const t=c.dataset.type; S.types.has(t)?S.types.delete(t):S.types.add(t); update();});
+  document.querySelectorAll("[data-tec]").forEach(c=>c.onclick=()=>{
+    const t=c.dataset.tec; S.tecs.has(t)?S.tecs.delete(t):S.tecs.add(t); update();});
+  document.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>{S.radius=b.dataset.r; update();});
+}
+function togglePlay(){
+  S.playing=!S.playing;
+  if(S.playing){
+    if(S.year>=REF) S.year=1400;
+    playTimer=setInterval(()=>{
+      S.year+=5; if(S.year>=REF){S.year=REF; togglePlay();}
+      const yv=document.getElementById("yrv"); if(yv) yv.textContent=S.year+" CE";
+      const ys=document.getElementById("yr"); if(ys) ys.value=S.year;
+      update();
+    },120);
+  } else { clearInterval(playTimer); }
+  const b=document.getElementById("play"); if(b) b.textContent=S.playing?"⏸ pause":"▶ play history";
+}
+
+function aboutHTML(){
+  return `<h2>About</h2>
+  <p>Interactive companion to <i>Kennedy et al., “Inconsistent perceptions of terminology:
+  Erupting, Active, Dormant, and Extinct volcanoes.”</i> Built directly from the
+  Smithsonian <b>Global Volcanism Program — Volcanoes of the World</b> catalogue.</p>
+  <div class="stat"><span>Holocene volcanoes</span><b>${META.n_volcanoes}</b></div>
+  <div class="stat"><span>Dated last eruption</span><b>${META.n_dated}</b></div>
+  <div class="stat"><span>Undated (active, untimed)</span><b>${META.n_undated}</b></div>
+  <div class="stat"><span>Confirmed eruptions</span><b>${fmt(META.n_eruptions)}</b></div>
+  <div class="stat"><span>Reference year</span><b>${REF}</b></div>
+  <h2>The three lenses</h2>
+  <p><b>Terminology &amp; tiers</b> — colour each volcano by its draft Table 2 tier and drag the
+  thresholds to see how “active / dormant / extinct” counts depend entirely on where you draw the line.</p>
+  <p><b>Population exposure</b> — size markers by people living within 5–100 km; the sidebar lists the
+  long-repose, high-exposure volcanoes that the terminology tends to under-rate.</p>
+  <p><b>Eruption timeline</b> — scrub or play the reference year to rebuild the active-volcano picture
+  through history, exposing the post-1500 recording bias.</p>
+  <h2>Data &amp; caveats</h2>
+  <p class="note">Source: ${META.source}. Population: LandScan via GVP E3 web app.
+  Pleistocene volcanoes have no per-volcano ages, so the “dormant/extinct” tiers are only reached
+  here when the reference year is pushed far enough back. Tiles &amp; map library load from the web.</p>`;
+}
+
+// ---- tabs ------------------------------------------------------------
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active"); S.tab=b.dataset.tab;
+  const mapTab = S.tab!=="about";
+  document.getElementById("mapwrap").classList.toggle("hidden",!mapTab);
+  if(S.playing) togglePlay();
+  buildSidebar();
+  if(mapTab){ update(); setTimeout(()=>map.invalidateSize(),50); }
+});
+
+document.getElementById("hsub").textContent=
+  `${META.n_volcanoes} Holocene volcanoes · ${fmt(META.n_eruptions)} eruptions · GVP`;
+buildSidebar(); update();
+</script>
+</body>
+</html>
