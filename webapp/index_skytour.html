@@ -181,8 +181,12 @@ function reposeText(ys){
 
 // ---- map -------------------------------------------------------------
 const map = L.map("map",{worldCopyJump:true,minZoom:2,maxZoom:11}).setView([12,5],2.3);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  {attribution:"&copy; OpenStreetMap &copy; CARTO",subdomains:"abcd",maxZoom:19}).addTo(map);
+// Esri World Dark Gray canvas (public, no API key). CARTO free tiles now
+// return "API KEY REQUIRED" watermarks.
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+L.tileLayer(ESRI+"World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+  {attribution:"Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors",maxZoom:16}).addTo(map);
+L.tileLayer(ESRI+"World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",{maxZoom:16}).addTo(map);
 
 const markers = V.map(v=>{
   const m = L.circleMarker([v.lat,v.lon],{radius:4,weight:.6,color:"#000",fillOpacity:.85});
