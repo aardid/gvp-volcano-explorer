@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GVP Volcano Explorer — terminology, exposure &amp; time</title>
+<title>GVP Volcano Explorer — with 3D sky tour</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
   :root{
@@ -75,6 +75,7 @@
 <header>
   <h1>GVP Volcano Explorer</h1>
   <span class="sub" id="hsub"></span>
+  <button id="skymode" class="btn" title="When on, clicking a volcano opens the 3D sky tour directly">🛩 Sky tour on click: <b>off</b></button>
   <span class="powered">Powered by <b>Cloudbreak Analytics</b></span>
   <nav class="tabs">
     <button data-tab="explore" class="active">Terminology &amp; tiers</button>
@@ -186,7 +187,7 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
 const markers = V.map(v=>{
   const m = L.circleMarker([v.lat,v.lon],{radius:4,weight:.6,color:"#000",fillOpacity:.85});
   m._v = v;
-  m.on("click",()=>openPopup(m));
+  m.on("click",()=>(window.SKY&&SKY.mode)?SKY.open(m._v.n):openPopup(m));
   m.addTo(map);
   return m;
 });
@@ -208,7 +209,7 @@ function openPopup(m){
   if(d.sum) html+=`<details style="margin-top:6px"><summary style="cursor:pointer;color:#888">Geological summary</summary>`+
     `<div style="max-height:150px;overflow:auto;font-size:11.5px;color:#444;margin-top:4px">${d.sum}</div></details>`;
   html+=`<div style="margin-top:8px"><a class="tourbtn" href="${tourUrl(v.n)}" target="_blank" rel="noopener" title="Open this volcano in the 3D Volcano Sky Tour (new tab)">🌋 Take a 3D tour</a></div>`;
-  html+=`<div style="margin-top:6px"><a href="https://volcano.si.edu/volcano.cfm?vn=${v.n}" target="_blank">GVP profile #${v.n} ↗</a></div></div>`;
+  html+=`<div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="skybtn" onclick="SKY.open(${v.n})">🛩 Sky tour in 3D</button><a href="https://volcano.si.edu/volcano.cfm?vn=${v.n}" target="_blank">GVP #${v.n} ↗</a></div></div>`;
   m.bindPopup(html,{maxWidth:300}).openPopup();
   setTimeout(()=>{const c=document.querySelector(".leaflet-popup .spark"); if(c) drawSpark(c,h);},30);
 }
@@ -506,5 +507,6 @@ document.getElementById("hsub").textContent=
   `${META.n_volcanoes} Holocene volcanoes · ${fmt(META.n_eruptions)} eruptions · GVP`;
 buildSidebar(); update();
 </script>
+<script src="skytour.js"></script>
 </body>
 </html>

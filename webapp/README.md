@@ -30,3 +30,40 @@ population) and `data/data_details.js` (summaries + photos).
 
 The reference-year slider is shared across all map tabs, the live histogram /
 exposure / timeline chart sits bottom-left, and tier counts update top-right.
+
+## Take a 3D tour (link to the Volcano Sky Tour)
+
+Every volcano popup has a **Take a 3D tour** button. It opens the standalone
+Volcano Sky Tour app in a **new tab** with `#vn=<GVP number>&tour`: a focused
+single-volcano view (legend and side panel hidden) that flies to the volcano
+with the teaching note and framing of its tour stop (`tours.js` over there) and
+orbits it until you drag. The target is set by `TOUR_APP` in `index.html`: when the page is
+opened from disk it uses the sibling repo `../../volcano_fly_educational/`, when
+served over http(s) it uses https://aardid.github.io/volcano-sky-tour/.
+
+## Alternative version with a 3D sky tour (`index_skytour.html`)
+
+Same explorer, plus a full-screen 3D fly-through (ArcGIS Maps SDK for
+JavaScript SceneView: World Imagery, World Elevation 3D, OpenStreetMap 3D
+buildings, all public, no API key). Open `index_skytour.html`:
+
+- every popup has a **Sky tour in 3D** button; or switch **Sky tour on click**
+  in the header so clicking a marker opens the 3D view directly;
+- the 3D view flies in and orbits the volcano, shows the same tier / repose /
+  population card, and offers **Fly** (W/S pitch, A/D turn, arrows climb,
+  Shift turbo, Space brake) and **Nearest next** to hop along the arc through
+  the currently filtered volcanoes; Esc or **Map** returns to the 2D map;
+- deep link: `index_skytour.html#sky=211020` (GVP number); add `?instant` to
+  skip the fly-in animation.
+
+The 3D engine (about 2 MB) is downloaded only when the first tour is opened, so
+the 2D app is unchanged until then. All 3D code is in `skytour.js`; the HTML
+is generated from `index.html` by `python build_skytour_version.py` (re-run it
+after editing `index.html`). Marker colours follow the reference year and
+thresholds set in the 2D sidebar. A **Full app** button opens the standalone
+Volcano Sky Tour (`../../volcano_fly_educational`, github.com/aardid/volcano-sky-tour)
+when it sits next to this repo.
+
+## Credits
+
+Powered by **Cloudbreak Analytics**.
