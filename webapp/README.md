@@ -6,8 +6,13 @@ figure scripts, so the app and the paper figures never disagree.
 
 ## Run
 Just **double-click `index.html`** (data is embedded as JS, so no local server
-is needed). The Leaflet library and basemap tiles load from the web, so an
-internet connection is required for the map background.
+is needed). Only the Leaflet library loads from the web.
+
+The map uses the **Equal Earth** projection (equal-area, Šavrič et al. 2019),
+so marker density and land areas are not inflated towards the poles as in Web
+Mercator. Because Leaflet raster tiles are Mercator-only, the basemap is drawn
+from embedded Natural Earth 1:110m land polygons and country borders
+(`data/data_world.js`, public domain; rebuild with `python build_worlddata.py`).
 
 ## Rebuild data
 After re-running `../build_catalogue.py`, regenerate the embedded data:
